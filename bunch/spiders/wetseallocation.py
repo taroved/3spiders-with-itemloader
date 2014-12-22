@@ -47,19 +47,18 @@ class WetsealLocationSpider(Spider):
                 else:
                     item['city'] = city_zipcode.re('\s*([^,]+), \w+')
                 
-                #todo: find services if it exists
+                #services: not found
                 item['address'] = [l.strip() for l in address_lines.extract()]
                 item['country'] = self.country
                 item['hours'] = self.parse_hours(tr.xpath('.//div[@class="store-hours"]/text()'))
                 item['state'] = response.meta[self.meta_state]
                 item['store_name'] = tr.xpath('.//div[@class="store-name"]/text()')[0].extract().strip()
-                #todo: find store_email if it exists
-                #todo: find store_floor_plan_url if it exists
-                #import pdb; pdb.set_trace()
+                #store_email: not found
+                #store_floor_plan_url: not found
                 item['store_id'] = tr.xpath('.//div[@class="store-name"]/../@id')[0].extract()
-                #todo: find store_image_url if it exists
+                #store_image_url: not found
                 item['store_url'] = LinkExtractor(restrict_xpaths='//a[@id="%s"]' % item['store_id']).extract_links(response)[0].url
-                #todo: find weekly_ad_url if it exists
+                #weekly_ad_url: not found
                 yield item
 
     def parse_hours(self, lines):

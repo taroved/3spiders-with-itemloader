@@ -9,7 +9,8 @@ from urlparse import urlparse, parse_qsl
 
 class HhgreggProductSpider(Spider):
     name = 'hhgregg'
-    allowed_domains = ['www.hhgregg.com']
+    allowed_domains = ['www.hhgregg.com',
+                       'hhgregg.scene7.com']
     start_urls = ['http://www.hhgregg.com/appliances-home',
                   'http://www.hhgregg.com/tv-entertainment',
                   'http://www.hhgregg.com/furniture-home',
@@ -18,27 +19,37 @@ class HhgreggProductSpider(Spider):
     meta_level = 'hhgregg_product_spider_level'
     meta_page = 'hhgregg_product_spider_page'
     meta_page_url = 'hhgregg_product_spider_page_url'
+    meta_url_stack = 'hhgregg_product_spider_url_stack'
+    meta_item = 'hhgregg_product_spider_item'
 
     level_category_0 = 0
     level_category_1 = 1
     level_list = 2
-    level_details = 3 
+    level_details = 3
+    level_images = 4
+    
+    image_url_pattern = "http://hhgregg.scene7.com/is/image/hhgregg/%s" 
     
     def start_requests(self):
         for url in self.start_urls:
             yield Request(url, meta={self.meta_level: self.level_category_0}, dont_filter=True)
-
+    
+    #usable for debug
+    def stack_push(self, response, url):
+        stack = [x for x in response.meta[self.meta_url_stack]] if self.meta_url_stack in response.meta else []
+        stack.append(url)
+        return stack
+    
     def parse(self, response):
         if response.meta[self.meta_level] in (self.level_category_0, self.level_category_1): #get links from category level 0 and 1
-            #import pdb; pdb.set_trace()
             for link in LinkExtractor(restrict_xpaths='//*[@id="left_nav"]//div[@class="widget_left_nav"][1]').extract_links(response):#[:1]
-                level = self.level_category_1 if response.meta[self.meta_level] == self.level_category_0 else self.level_list 
-                yield Request(link.url, callback=self.parse, meta={self.meta_level: level})
+                level = self.level_category_1 if response.meta[self.meta_level] == self.level_category_0 else self.level_list
+                yield Request(link.url, callback=self.parse, meta={self.meta_level: level, self.meta_url_stack: self.stack_push(response, link.url)})
 
         elif response.meta[self.meta_level] == self.level_list: #get links from product list and turn the page
             #get product details requests
             for link in LinkExtractor(restrict_xpaths='//*[@class="product_listing_container"]//h3', allow='/item/').extract_links(response):
-                yield Request(link.url, callback=self.parse, meta={self.meta_level: self.level_details})
+                yield Request(link.url, callback=self.parse, meta={self.meta_level: self.level_details, self.meta_url_stack: self.stack_push(response, link.url)})
             
             #get next page of product list
             if self.meta_page in response.meta:
@@ -48,7 +59,7 @@ class HhgreggProductSpider(Spider):
                 page = 2
                 url = response.xpath('//body/script[1]').re(r"SearchBasedNavigationDisplayJS.init\('([^']+)'\);")[0] #we can get the url only in non-ajax response
             if response.xpath('(//*[@class="pages center"])[1]//a[contains(.,%d)]' % page):
-                yield self.get_page_request(response, page, {self.meta_level: self.level_list, self.meta_page: page, self.meta_page_url: url})
+                yield self.get_page_request(response, page, {self.meta_level: self.level_list, self.meta_page: page, self.meta_page_url: url, self.meta_url_stack: self.stack_push(response, (page, url))})
             
         elif response.meta[self.meta_level] == self.level_details: #get product details
             item = ProductItem()
@@ -77,7 +88,7 @@ class HhgreggProductSpider(Spider):
             item['sku'] = response.xpath('//script/text()').re("var sku= '([^']+)';")[0]
             #upc: not found
             #todo: item['image_urls'] = 
-            item['primary_image_url'] = 'http://hhgregg.scene7.com/is/image/hhgregg/%s?hei=300&wid=300&fit=constrain,1&fmt=jpg' % item['sku']
+            item['primary_image_url'] = self.image_url_pattern % item['sku']
             item['features'] = [''.join(span.xpath('.//text()').extract()) for span in response.xpath('//*[@class="features_list"]/ul/li/span')]
             
             item['specifications'] = self.get_specifications(response)
@@ -95,7 +106,15 @@ class HhgreggProductSpider(Spider):
             if discontinued:
                 #another availability cases depend on zip code
                 item['available_instore'] = item['available_online'] = False
-                
+            
+            #now we have got all details except image_urls
+            images_xml_url = self.image_url_pattern % item['sku'] + '?req=set,xml,UTF-8' 
+            yield Request(images_xml_url, callback=self.parse, meta={self.meta_level: self.level_images, self.meta_item: item, self.meta_url_stack: self.stack_push(response, images_xml_url)})
+        
+        elif response.meta[self.meta_level] == self.level_images: #additional level. We need it to get image_urls
+            item = response.meta[self.meta_item]
+            img_ids = response.xpath('/set/item/s/@n').re('^hhgregg/(.+)$')
+            item['image_urls'] = [self.image_url_pattern % id for id in img_ids]
             yield item
             
     def get_specifications(self, response):
