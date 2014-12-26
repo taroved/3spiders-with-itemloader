@@ -40,7 +40,7 @@ class AppleLocationSpider(Spider):
             item['address'] = [s.strip() for s in address.xpath('div[@class="street-address"]/text()').extract()]
             item['country'] = response.meta[self.meta_country]
             if item['country'] in self.hours_countries:
-                item['hours'] = self.parse_hours(address.xpath('../table[@class="store-info"]/tr'))
+                item['hours'] = self.parse_hours(address.xpath('../table[@class="store-info"][1]/tr'))
             item['phone_number'] = address.xpath('div[@class="telephone-number"]/text()')[0].extract().strip()
             item['services'] = response.xpath('//nav[@class="nav hero-nav selfclear"]//img/@alt').extract()
             state = address.xpath('.//span[@class="region"]/text()').extract()
