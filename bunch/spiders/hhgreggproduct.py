@@ -1,6 +1,6 @@
 from urlparse import urlparse, parse_qsl
 
-from scrapy.spider import Spider
+from scrapy import Spider
 from scrapy.http import Request, FormRequest
 from scrapy.contrib.linkextractors import LinkExtractor
 
@@ -29,23 +29,15 @@ class HhgreggProductSpider(Spider):
 
     def start_requests(self):
         for url in self.start_urls:
-            yield Request(url, meta={self.meta_level: self.level_category_0}, dont_filter=True)
+            yield Request(url, callback=self.parse_category,
+                          meta={self.meta_level: self.level_category_0})
 
-    def stack_push(self, response, url):
-        """Push url to urls stack in meta.
-        Usable for debug. Helps to find page with broken links.
-        """
-        stack = response.meta[self.meta_url_stack][
-            :] if self.meta_url_stack in response.meta else []
-        stack.append(url)
-        return stack
-
-    def parse(self, response):
+    def parse_category(self, response):
         """Parse links from category level 0 and 1"""
         if response.meta[self.meta_level] in (self.level_category_0, self.level_category_1):
             for link in LinkExtractor(restrict_xpaths='//*[@id="left_nav"]//div[@class="widget_left_nav"][1]').extract_links(response):
                 if response.meta[self.meta_level] == self.level_category_0:
-                    yield Request(link.url, callback=self.parse,
+                    yield Request(link.url, callback=self.parse_category,
                                   meta={
                                       self.meta_level: self.level_category_1,
                                       self.meta_url_stack: self.stack_push(response, link.url)})
@@ -132,8 +124,7 @@ class HhgreggProductSpider(Spider):
             '//*[@id="breadcrumb"]/a/text()')[1:].extract()
 
         def rating(x):
-            # the string type is in the task
-            return str(int(float(x) * 100 / 5))
+            return int(float(x) * 100 / 5)
         item['rating'] = rating(
             response.xpath('//script/text()').re(r"'entity.ratingUrl=([\d.]+)',")[0])
 
@@ -189,3 +180,12 @@ class HhgreggProductSpider(Spider):
 
         return FormRequest(url, callback=self.parse_list, formdata=formdata,
                            meta=meta, headers={'X-Requested-With': 'XMLHttpRequest'})
+
+    def stack_push(self, response, url):
+        """Push url to urls stack in meta.
+        Usable for debug. Helps to find page with broken links.
+        """
+        stack = response.meta[self.meta_url_stack][
+            :] if self.meta_url_stack in response.meta else []
+        stack.append(url)
+        return stack
