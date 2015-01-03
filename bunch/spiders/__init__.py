@@ -3,7 +3,9 @@
 # Please refer to the documentation for information on how to create and manage
 # your spiders.
 
-_week = {0: 'Monday', 1: 'Tuesday', 2: 'Wednesday', 3: 'Thursday', 4: 'Friday', 5: 'Saturday', 6: 'Sunday'}
+_week = {0: 'Monday', 1: 'Tuesday', 2: 'Wednesday',
+         3: 'Thursday', 4: 'Friday', 5: 'Saturday', 6: 'Sunday'}
+
 
 def get_hours_item_value(days_time_pairs):
     days = {}

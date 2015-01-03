@@ -5,6 +5,7 @@ from scrapy.contrib.linkextractors import LinkExtractor
 from bunch.items import LocationItem
 from . import get_hours_item_value
 
+
 class AppleLocationSpider(Spider):
     name = 'apple'
     allowed_domains = ['www.apple.com']
@@ -21,37 +22,46 @@ class AppleLocationSpider(Spider):
             yield Request(url, meta={self.meta_first: True}, dont_filter=True)
 
     def parse(self, response):
-        if self.meta_first in response.meta: #start page with links
+        if self.meta_first in response.meta:  # start page with links
             for menuitem in response.xpath('//section[@id="country_switcher"]/div/ul/li'):
                 code = menuitem.xpath('@data-tag')[0].extract()
                 name = menuitem.xpath('text()')[0].extract()
-                for link in [l for l in LinkExtractor(restrict_xpaths='//div[@id="%s"]/div/ul/li/a' % (code+'stores')).extract_links(response)]:
+                path = '//div[@id="%s"]/div/ul/li/a' % (code + 'stores')
+                for link in LinkExtractor(restrict_xpaths=path).extract_links(response):
                     yield Request(link.url, callback=self.parse, meta={self.meta_country: name})
 
-        else: #scraping of items
+        else:  # scraping of items
             item = LocationItem()
             address = response.xpath('(//address)[1]')
 
             city = address.xpath('.//span[@class="locality"]/text()').extract()
             if len(city):
                 item['city'] = city[0]
-            item['address'] = [s.strip() for s in address.xpath('div[@class="street-address"]/text()').extract()]
+            item['address'] = [s.strip() for s in address.xpath(
+                'div[@class="street-address"]/text()').extract()]
             item['country'] = response.meta[self.meta_country]
             if item['country'] in self.hours_countries:
-                item['hours'] = self.parse_hours(address.xpath('../table[@class="store-info"][1]/tr'))
-            item['phone_number'] = address.xpath('div[@class="telephone-number"]/text()')[0].extract().strip()
-            item['services'] = response.xpath('//nav[@class="nav hero-nav selfclear"]//img/@alt').extract()
+                item['hours'] = self.parse_hours(
+                    address.xpath('../table[@class="store-info"][1]/tr'))
+            item['phone_number'] = address.xpath(
+                'div[@class="telephone-number"]/text()')[0].extract().strip()
+            item['services'] = response.xpath(
+                '//nav[@class="nav hero-nav selfclear"]//img/@alt').extract()
             state = address.xpath('.//span[@class="region"]/text()').extract()
             if len(state):
                 item['state'] = state[0]
-            #store_email: not found
-            #store_floor_plan_url: not found
-            item['store_image_url'] = address.xpath('../../div[@class="column last"]/img/@src')[0].extract()
-            item['store_name'] = address.xpath('div[@class="store-name"]/text()')[0].extract().strip()
-            item['store_id'] = response.xpath('/html/head/meta[@name="omni_page"]/@content').re(r'(R\d+)$')[0]
-            #find weekly_ad_url: on the same page
+            # store_email: not found
+            # store_floor_plan_url: not found
+            item['store_image_url'] = address.xpath(
+                '../../div[@class="column last"]/img/@src')[0].extract()
+            item['store_name'] = address.xpath(
+                'div[@class="store-name"]/text()')[0].extract().strip()
+            item['store_id'] = response.xpath(
+                '/html/head/meta[@name="omni_page"]/@content').re(r'(R\d+)$')[0]
+            # find weekly_ad_url: on the same page
             item['weekly_ad_url'] = item['store_url'] = response.url
-            zipcode = address.xpath('.//span[@class="postal-code"]/text()').extract()
+            zipcode = address.xpath(
+                './/span[@class="postal-code"]/text()').extract()
             if len(zipcode):
                 item['zipcode'] = zipcode[0]
             yield item
@@ -61,7 +71,7 @@ class AppleLocationSpider(Spider):
         rows = [tr.xpath('td/text()') for tr in trs]
 
         if rows[0][0].extract() == self.hours_full_year:
-            return get_hours_item_value([('12:00 a.m','12:00 a.m') for _ in range(7)])
+            return get_hours_item_value([('12:00 a.m', '12:00 a.m') for _ in range(7)])
         else:
             sitedays = ['Mon', 'Tues', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -72,9 +82,10 @@ class AppleLocationSpider(Spider):
 
                 day_idxes = None
                 pieces = day_interval.re(r'(\w+) - (\w+)')
-                if pieces: #interval of days
-                    day_idxes = range(sitedays.index(pieces[0]), sitedays.index(pieces[1]) + 1)
-                else: #single day
+                if pieces:  # interval of days
+                    day_idxes = range(
+                        sitedays.index(pieces[0]), sitedays.index(pieces[1]) + 1)
+                else:  # single day
                     d = day_interval.re(r'\w+')[0]
                     day_idxes = [sitedays.index(d)]
 
