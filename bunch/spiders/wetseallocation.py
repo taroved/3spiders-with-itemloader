@@ -16,7 +16,11 @@ class WetsealLocationSpider(CrawlSpider):
     country = 'United States'  # I suppose there is only US
 
     def parse_start_url(self, response):
-        """Parse start page with states list"""
+        """Parse start page with states list.
+
+        @url http://www.wetseal.com/Stores
+        @returns requests 23
+        """
         formxpath = '//form[@id="dwfrm_storelocator_state"]'
         form = response.xpath(formxpath)[0]
         select_name = form.xpath('.//select/@name')[0].extract()
@@ -27,13 +31,13 @@ class WetsealLocationSpider(CrawlSpider):
         for option in form.xpath('.//select/option')[1:]:
             code = option.xpath('@value')[0].extract()
             name = option.xpath('text()')[0].extract()
-            yield FormRequest.from_response(response, callback=self.parse_store,
+            yield FormRequest.from_response(response, callback=self.parse_stores,
                                             formdata={
                                                 select_name: code, button_name: button_value},
                                             formxpath=formxpath,
                                             meta={self.meta_state: name})
 
-    def parse_store(self, response):
+    def parse_stores(self, response):
         """Parse items"""
         for tr in response.xpath('//table[@id="store-location-results"]/tbody/tr'):
             item = LocationItem()

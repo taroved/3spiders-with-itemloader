@@ -16,37 +16,40 @@ class HhgreggProductSpider(Spider):
                   'http://www.hhgregg.com/furniture-home',
                   'http://www.hhgregg.com/computers-mobile']
 
-    meta_level = 'hhgregg_product_spider_level'
+    meta_subcategory = 'hhgregg_product_spider_subcategory'
     meta_page = 'hhgregg_product_spider_page'
     meta_page_url = 'hhgregg_product_spider_page_url'
     meta_url_stack = 'hhgregg_product_spider_url_stack'  # for debug
     meta_item = 'hhgregg_product_spider_item'
 
-    level_category_0 = 0
-    level_category_1 = 1
-
     image_url_pattern = "http://hhgregg.scene7.com/is/image/hhgregg/%s"
 
     def start_requests(self):
         for url in self.start_urls:
-            yield Request(url, callback=self.parse_category,
-                          meta={self.meta_level: self.level_category_0})
+            yield Request(url, callback=self.parse_category)
 
     def parse_category(self, response):
-        """Parse links from category level 0 and 1"""
-        if response.meta[self.meta_level] in (self.level_category_0, self.level_category_1):
-            for link in LinkExtractor(restrict_xpaths='//*[@id="left_nav"]//div[@class="widget_left_nav"][1]').extract_links(response):
-                if response.meta[self.meta_level] == self.level_category_0:
-                    yield Request(link.url, callback=self.parse_category,
-                                  meta={
-                                      self.meta_level: self.level_category_1,
-                                      self.meta_url_stack: self.stack_push(response, link.url)})
-                else:
-                    yield Request(link.url, callback=self.parse_list,
-                                  meta={self.meta_url_stack: self.stack_push(response, link.url)})
+        """Parse links from category and subcategory.
+
+        @url http://www.hhgregg.com/appliances-home
+        @returns requests 9
+        """
+        for link in LinkExtractor(restrict_xpaths='//*[@id="left_nav"]//div[@class="widget_left_nav"][1]').extract_links(response):
+            if self.meta_subcategory in response.meta:
+                yield Request(link.url, callback=self.parse_list,
+                              meta={self.meta_url_stack: self.stack_push(response, link.url)})
+            else:
+                yield Request(link.url, callback=self.parse_category,
+                              meta={
+                                  self.meta_subcategory: True,
+                                  self.meta_url_stack: self.stack_push(response, link.url)})
 
     def parse_list(self, response):
-        """Parse product links from product list and return next page request"""
+        """Parse product links from product list and return next page request.
+
+        @url http://www.hhgregg.com/appliances-home/refrigerators
+        @returns requests 13 13
+        """
         # get product details requests
         for link in LinkExtractor(
             restrict_xpaths='//*[@class="product_listing_container"]//h3',
@@ -73,7 +76,11 @@ class HhgreggProductSpider(Spider):
                                         })
 
     def parse_details(self, response):
-        """Parse product details into scrapy item"""
+        """Parse product details into scrapy item.
+
+        @url http://www.hhgregg.com/whirlpool-24-5-cu-ft-stainless-steel-french-door-4-door-refrigerator/item/WRX735SDBM
+        @returns requests 1 1
+        """
         item = ProductItem()
         details = response.xpath('//*[@id="prod_detail_main"]')[0]
         price_block = details.xpath('//*[@class="pricing"]')

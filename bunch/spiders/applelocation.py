@@ -17,7 +17,13 @@ class AppleLocationSpider(CrawlSpider):
     hours_full_year = '24/7, 365 days a year'
 
     def parse_start_url(self, response):
-        """Parse start page with links"""
+        """Parse start page with links.        
+        (The docstring contains scrapy contracts.
+        Read more at http://doc.scrapy.org/en/latest/topics/contracts.html )
+
+        @url http://www.apple.com/retail/storelist/
+        @returns requests 447
+        """
         for menuitem in response.xpath('//section[@id="country_switcher"]/div/ul/li'):
             code = menuitem.xpath('@data-tag')[0].extract()
             name = menuitem.xpath('text()')[0].extract()
@@ -26,7 +32,12 @@ class AppleLocationSpider(CrawlSpider):
                 yield Request(link.url, callback=self.parse_store, meta={self.meta_country: name})
 
     def parse_store(self, response):
-        """Scraping of items"""
+        """Scraping of items.
+
+        @url http://www.apple.com/retail/thesummit/
+        @returns items 1 1
+        @scrapes address phone_number services state store_image_url store_name store_id store_url weekly_ad_url zipcode
+        """
         item = LocationItem()
         address = response.xpath('(//address)[1]')
 
@@ -35,10 +46,11 @@ class AppleLocationSpider(CrawlSpider):
             item['city'] = city[0]
         item['address'] = [s.strip() for s in address.xpath(
             'div[@class="street-address"]/text()').extract()]
-        item['country'] = response.meta[self.meta_country]
-        if item['country'] in self.hours_countries:
-            item['hours'] = self.parse_hours(
-                address.xpath('../table[@class="store-info"][1]/tr'))
+        if self.meta_country in response.meta:
+            item['country'] = response.meta[self.meta_country]
+            if item['country'] in self.hours_countries:
+                item['hours'] = self.parse_hours(
+                    address.xpath('../table[@class="store-info"][1]/tr'))
         item['phone_number'] = address.xpath(
             'div[@class="telephone-number"]/text()')[0].extract().strip()
         item['services'] = response.xpath(
