@@ -3,7 +3,6 @@ from scrapy.http import Request
 from scrapy.contrib.linkextractors import LinkExtractor
 from scrapy.contrib.loader import ItemLoader
 from scrapy.contrib.loader.processor import TakeFirst
-from scrapy.selector.unified import Selector, SelectorList
 
 from bunch.items import LocationItem
 from . import get_hours_item_value
@@ -42,45 +41,37 @@ class AppleLocationSpider(CrawlSpider):
         @scrapes address phone_number services state store_image_url store_name store_id store_url weekly_ad_url zipcode
         """
         il = ItemLoader(item=LocationItem(), response=response)
-        address = response.xpath('(//address)[1]')
-        il.add_value('city', address.xpath('.//span[@class="locality"]/text()'),
-                     TakeFirst(), Selector.extract)
-        il.add_value('address',
-                     address.xpath('div[@class="street-address"]/text()'),
-                     SelectorList.extract,
+        il.selector=response.xpath('(//address)[1]')
+
+        il.add_xpath('city', './/span[@class="locality"]/text()')
+        il.add_xpath('address', 'div[@class="street-address"]/text()',
                      lambda x: [s.strip() for s in x])
         if self.meta_country in response.meta:
             il.add_value('country', response.meta[self.meta_country])
             if il.get_collected_values('country')[0] in self.hours_countries:
                 il.add_value('hours',
-                             address.xpath(
+                             il.selector.xpath(
                                  '../table[@class="store-info"][1]/tr'),
                              self.parse_hours)
-        il.add_value('phone_number',
-                     address.xpath('div[@class="telephone-number"]/text()'),
-                     TakeFirst(), Selector.extract,
-                     unicode.strip)
+        il.add_xpath('phone_number', 'div[@class="telephone-number"]/text()',
+                     TakeFirst(), unicode.strip)
         il.add_xpath('services',
                      '//nav[@class="nav hero-nav selfclear"]//img/@alt')
-        il.add_value('state',
-                     address.xpath('.//span[@class="region"]/text()'),
-                     TakeFirst(), Selector.extract)
+        il.add_xpath('state', './/span[@class="region"]/text()', TakeFirst())
         # store_email: not found
         # store_floor_plan_url: not found
-        il.add_value('store_image_url',
-                     address.xpath('../../div[@class="column last"]/img/@src'),
-                     TakeFirst(), Selector.extract)
-        il.add_value('store_name',
-                     address.xpath('div[@class="store-name"]/text()'),
-                     TakeFirst(), Selector.extract, unicode.strip)
+        il.add_xpath('store_image_url',
+                     '../../div[@class="column last"]/img/@src',
+                     TakeFirst())
+        il.add_xpath('store_name', 'div[@class="store-name"]/text()',
+                     TakeFirst(), unicode.strip)
         il.add_xpath('store_id', '/html/head/meta[@name="omni_page"]/@content',
                      TakeFirst(), re=r'(R\d+)$')
         # find weekly_ad_url: on the same page
         il.add_value('weekly_ad_url', response.url)
         il.add_value('store_url', response.url)
-        il.add_value('zipcode',
-                     address.xpath('.//span[@class="postal-code"]/text()'),
-                     TakeFirst(), Selector.extract)
+        il.add_xpath('zipcode', './/span[@class="postal-code"]/text()',
+                     TakeFirst())
         yield il.load_item()
 
     def parse_hours(self, trs):
