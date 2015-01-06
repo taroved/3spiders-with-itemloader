@@ -74,19 +74,10 @@ class AppleLocationSpider(CrawlSpider):
                      TakeFirst())
 
         #  output processors
-        il.city_out = TakeFirst()
+        il.default_output_processor = TakeFirst()
         il.address_out = Identity()
-        il.country_out = TakeFirst()
         il.hours_out = Identity()
-        il.phone_number_out = TakeFirst()
         il.services_out = Identity()
-        il.state_out = TakeFirst()
-        il.store_image_url_out = TakeFirst()
-        il.store_name_out = TakeFirst()
-        il.store_id_out = TakeFirst()
-        il.weekly_ad_url_out = TakeFirst()
-        il.store_url_out = TakeFirst()
-        il.zipcode_out = TakeFirst()
 
         yield il.load_item()
 
