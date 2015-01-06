@@ -1,6 +1,8 @@
 from scrapy.contrib.spiders import CrawlSpider
-from scrapy.http import Request, FormRequest
+from scrapy.http import FormRequest
 from scrapy.contrib.linkextractors import LinkExtractor
+from scrapy.contrib.loader import ItemLoader
+from scrapy.contrib.loader.processor import TakeFirst, Identity
 
 from bunch.items import LocationItem
 from . import get_hours_item_value
@@ -40,34 +42,45 @@ class WetsealLocationSpider(CrawlSpider):
     def parse_stores(self, response):
         """Parse items"""
         for tr in response.xpath('//table[@id="store-location-results"]/tbody/tr'):
-            item = LocationItem()
+            il = ItemLoader(item=LocationItem(), response=response)
 
             address_lines = tr.xpath('td[@class="store-address"]/text()')
-            item['phone_number'] = address_lines.pop().extract().strip()
-            city_zipcode = address_lines.pop()
-            if city_zipcode.re(r'\s*([^,]+), \w+ (\d+)'):
-                item['city'], item['zipcode'] = city_zipcode.re(
-                    r'\s*([^,]+), \w+ (\d+)')
-            else:
-                item['city'] = city_zipcode.re(r'\s*([^,]+), \w+')
+            il.add_value('phone_number', address_lines.pop().extract().strip())
+            city_zipcode = address_lines.pop().extract()
+            il.add_value('city', city_zipcode, re=r'\s*([^,]+), \w+')
+            il.add_value('zipcode', city_zipcode, re=r'\s*[^,]+, \w+ (\d+)')
 
             # services: not found
-            item['address'] = [l.strip() for l in address_lines.extract()]
-            item['country'] = self.country
-            item['hours'] = self.parse_hours(
-                tr.xpath('.//div[@class="store-hours"]/text()'))
-            item['state'] = response.meta[self.meta_state]
-            item['store_name'] = tr.xpath(
-                './/div[@class="store-name"]/text()')[0].extract().strip()
+            il.add_value('address', address_lines,
+                         lambda x: [s.strip() for s in x.extract()])
+
+            il.add_value('country', self.country)
+
+            il.add_value('hours',
+                         tr.xpath('.//div[@class="store-hours"]/text()'),
+                         self.parse_hours)
+            il.add_value('state', response.meta[self.meta_state])
+
+            il.selector = tr
+            il.add_xpath('store_name', './/div[@class="store-name"]/text()',
+                         TakeFirst(), unicode.strip)
             # store_email: not found
             # store_floor_plan_url: not found
-            item['store_id'] = tr.xpath(
-                './/div[@class="store-name"]/../@id')[0].extract()
+            il.add_xpath('store_id', './/div[@class="store-name"]/../@id')
             # store_image_url: not found
-            item['store_url'] = LinkExtractor(
-                restrict_xpaths='//a[@id="%s"]' % item['store_id']).extract_links(response)[0].url
+            store_id = il.get_collected_values('store_id')[0]
+            il.add_value('store_url',
+                         LinkExtractor(
+                             restrict_xpaths='//a[@id="%s"]' % store_id).extract_links(response)[0].url)
             # weekly_ad_url: not found
-            yield item
+
+            #  output processors
+            il.default_output_processor = TakeFirst()
+            il.address_out = Identity()
+            il.hours_out = Identity()
+            il.services_out = Identity()
+
+            yield il.load_item()
 
     def parse_hours(self, lines):
         sitedays = {'Monday': 0, 'Tuesday': 1, 'Wednesday': 2,
