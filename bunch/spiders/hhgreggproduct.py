@@ -2,7 +2,10 @@ from urlparse import urlparse, parse_qsl
 
 from scrapy import Spider
 from scrapy.http import Request, FormRequest
+from scrapy.selector import Selector
 from scrapy.contrib.linkextractors import LinkExtractor
+from scrapy.contrib.loader import ItemLoader
+from scrapy.contrib.loader.processor import TakeFirst, Identity, MapCompose
 
 from bunch.items import ProductItem
 
@@ -20,7 +23,7 @@ class HhgreggProductSpider(Spider):
     meta_page = 'hhgregg_product_spider_page'
     meta_page_url = 'hhgregg_product_spider_page_url'
     meta_url_stack = 'hhgregg_product_spider_url_stack'  # for debug
-    meta_item = 'hhgregg_product_spider_item'
+    meta_itemloader = 'hhgregg_product_spider_item'
 
     image_url_pattern = "http://hhgregg.scene7.com/is/image/hhgregg/%s"
 
@@ -81,80 +84,83 @@ class HhgreggProductSpider(Spider):
         @url http://www.hhgregg.com/whirlpool-24-5-cu-ft-stainless-steel-french-door-4-door-refrigerator/item/WRX735SDBM
         @returns requests 1 1
         """
-        item = ProductItem()
-        details = response.xpath('//*[@id="prod_detail_main"]')[0]
+        il = ItemLoader(item=ProductItem(), response=response)
+        try:
+            details = response.xpath('//*[@id="prod_detail_main"]')[0]
+        except:
+            import pdb
+            pdb.set_trace()
         price_block = details.xpath('//*[@class="pricing"]')
-        if price_block:
-            price = price_block[0].xpath(
-                './/span[contains(.,"Your Price")]/following-sibling::span/text()')
-            if price:
-                item['currency'], current_price = price[
-                    0].re(r'\s*(\S)([\d,.]+)')
-                item['current_price'] = float(current_price.replace(',', ''))
-            price = price_block[0].xpath(
-                './/span[contains(.,"SRP")]/following-sibling::span/text()')
-            if price:
-                item['currency'], original_price = price[
-                    0].re(r'\s*(\S)([\d,.]+)')
-                item['original_price'] = original_price
 
-        # not lambda, as mentioned in pep-8
-        def xs(node, x):
-            """Extract single item with xpath"""
-            return node.xpath(x)[0].extract()
+        il.selector = price_block
+        x = './/span[contains(.,"Your Price")]/following-sibling::span/text()'
+        price_re = r'\s*\S([\d,.]+)'
+        cur_re = r'\s*(\S)[\d,.]+'
+        il.add_xpath('current_price', x, re=price_re)
+        il.add_xpath('currency', x, re=cur_re)
+        x = './/span[contains(.,"SRP")]/following-sibling::span/text()'
+        il.add_xpath('original_price', x, re=price_re)
+        il.add_xpath('currency', x, re=cur_re)
 
-        desc = response.xpath(
-            '//head/meta[@property="og:description"]/@content')
-        if desc:
-            item['description'] = desc[0].extract()
-        item['brand'] = response.xpath(
-            '//script/text()').re("'entity.brand=([^']+)',")[0]
-        item['title'] = xs(details, './/h1/text()')
-        item['retailer_id'] = response.url.split('/').pop()  # replace
-        item['model'] = details.xpath(
-            './/span[@class="model_no"]').re(r'Model: (\w+)')[0]
+        il.selector = Selector(response)
+        il.add_xpath('description',
+                     '//head/meta[@property="og:description"]/@content')
+        il.add_xpath('brand', '//script/text()', re="'entity.brand=([^']+)',")
+        il.selector = details
+        il.add_xpath('title', './/h1/text()')
+        il.add_value('retailer_id', response.url.split('/').pop())
+        il.add_xpath('model', './/span[@class="model_no"]', re=r'Model: (\w+)')
         # mpn: Manufacturer's Product Number. What is it? Where is it?
-        item['sku'] = response.xpath(
-            '//script/text()').re("var sku= '([^']+)';")[0]
+        il.selector = Selector(response)
+        il.add_xpath('sku', '//script/text()', re="var sku= '([^']+)';")
+        sku = il.get_collected_values('sku')[0]
         # upc: not found
-        item['primary_image_url'] = self.image_url_pattern % item['sku']
-        item['features'] = [''.join(span.xpath('.//text()').extract())
-                            for span in response.xpath('//*[@class="features_list"]/ul/li/span')]
+        il.add_value('primary_image_url', self.image_url_pattern % sku)
+        il.selector = Selector(response)
+        il.add_value('features',
+                     response.xpath('//*[@class="features_list"]/ul/li/span'),
+                     MapCompose(lambda x: ''.join(x.xpath('.//text()').extract())))
 
-        item['specifications'] = self.get_specifications(response)
+        il.add_value('specifications', self.get_specifications(response))
+        specs = il.get_collected_values('specifications')[0]
+        il.add_value('mpn', specs.get('Manufacturer Model Number'))
 
-        mpn_key = 'Manufacturer Model Number'
-        if mpn_key in item['specifications']:
-            item['mpn'] = item['specifications'][mpn_key]
+        il.add_xpath('trail', '//*[@id="breadcrumb"]/a/text()',
+                     lambda xl: xl[1:])
 
-        item['trail'] = response.xpath(
-            '//*[@id="breadcrumb"]/a/text()')[1:].extract()
-
-        def rating(x):
-            return int(float(x) * 100 / 5)
-        item['rating'] = rating(
-            response.xpath('//script/text()').re(r"'entity.ratingUrl=([\d.]+)',")[0])
+        il.add_xpath('rating', '//script/text()',
+                     lambda x: int(float(x[0]) * 100 / 5),
+                     re=r"'entity.ratingUrl=([\d.]+)',")
 
         discontinued = response.xpath(
             '//*[@class="available_soon_text2" and contains(.,"DISCONTINUED")]')
         if discontinued:
             # another availability cases depend on zip code
-            item['available_instore'] = item['available_online'] = False
+            il.add_value('available_instore', False)
+            il.add_value('available_online', False)
 
         # now we have got all details except image_urls
-        images_xml_url = self.image_url_pattern % item[
-            'sku'] + '?req=set,xml,UTF-8'
+        images_xml_url = self.image_url_pattern % sku + '?req=set,xml,UTF-8'
         yield Request(images_xml_url, callback=self.parse_images,
-                      meta={self.meta_item: item,
+                      meta={self.meta_itemloader: il,
                             self.meta_url_stack: self.stack_push(response, images_xml_url)
                             })
 
     def parse_images(self, response):
         """Parse image_urls for item"""
-        item = response.meta[self.meta_item]
+        il = response.meta[self.meta_itemloader]
         img_ids = response.xpath('/set/item/s/@n').re('^hhgregg/(.+)$')
-        item['image_urls'] = [self.image_url_pattern % id for id in img_ids]
-        yield item
+        for id in img_ids:
+            il.add_value('image_urls', self.image_url_pattern % id)
+
+        #  output processors
+        il.default_output_processor = TakeFirst()
+        il.features_out = Identity()
+        il.image_urls_out = Identity()
+        il.specifications_out = Identity()
+        il.trail_out = Identity()
+
+        yield il.load_item()
 
     def get_specifications(self, response):
         s = {}
