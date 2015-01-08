@@ -1,11 +1,9 @@
 from scrapy.contrib.spiders import CrawlSpider
 from scrapy.http import Request
 from scrapy.contrib.linkextractors import LinkExtractor
-from scrapy.contrib.loader import ItemLoader
-from scrapy.contrib.loader.processor import TakeFirst, Identity
+from scrapy.contrib.loader.processor import TakeFirst
 
-from bunch.items import LocationItem
-from . import get_hours_item_value
+from bunch.items import LocationLoader
 
 
 class AppleLocationSpider(CrawlSpider):
@@ -40,7 +38,7 @@ class AppleLocationSpider(CrawlSpider):
         @returns items 1 1
         @scrapes address phone_number services state store_image_url store_name store_id store_url weekly_ad_url zipcode
         """
-        il = ItemLoader(item=LocationItem(), response=response)
+        il = LocationLoader(response=response)
         il.selector = response.xpath('(//address)[1]')
 
         il.add_xpath('city', './/span[@class="locality"]/text()')
@@ -72,12 +70,6 @@ class AppleLocationSpider(CrawlSpider):
         il.add_value('store_url', response.url)
         il.add_xpath('zipcode', './/span[@class="postal-code"]/text()',
                      TakeFirst())
-
-        #  output processors
-        il.default_output_processor = TakeFirst()
-        il.address_out = Identity()
-        il.hours_out = Identity()
-        il.services_out = Identity()
 
         yield il.load_item()
 
@@ -111,4 +103,4 @@ class AppleLocationSpider(CrawlSpider):
 
                 for i in day_idxes:
                     days[i] = time_interval
-            return get_hours_item_value(days)
+            return days

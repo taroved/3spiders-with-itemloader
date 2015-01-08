@@ -1,11 +1,9 @@
 from scrapy.contrib.spiders import CrawlSpider
 from scrapy.http import FormRequest
 from scrapy.contrib.linkextractors import LinkExtractor
-from scrapy.contrib.loader import ItemLoader
-from scrapy.contrib.loader.processor import TakeFirst, Identity
+from scrapy.contrib.loader.processor import TakeFirst
 
-from bunch.items import LocationItem
-from . import get_hours_item_value
+from bunch.items import LocationLoader
 
 
 class WetsealLocationSpider(CrawlSpider):
@@ -42,7 +40,7 @@ class WetsealLocationSpider(CrawlSpider):
     def parse_stores(self, response):
         """Parse items"""
         for tr in response.xpath('//table[@id="store-location-results"]/tbody/tr'):
-            il = ItemLoader(item=LocationItem(), response=response)
+            il = LocationLoader(response=response)
 
             address_lines = tr.xpath('td[@class="store-address"]/text()')
             il.add_value('phone_number', address_lines.pop().extract().strip())
@@ -74,12 +72,6 @@ class WetsealLocationSpider(CrawlSpider):
                              restrict_xpaths='//a[@id="%s"]' % store_id).extract_links(response)[0].url)
             # weekly_ad_url: not found
 
-            #  output processors
-            il.default_output_processor = TakeFirst()
-            il.address_out = Identity()
-            il.hours_out = Identity()
-            il.services_out = Identity()
-
             yield il.load_item()
 
     def parse_hours(self, lines):
@@ -99,4 +91,4 @@ class WetsealLocationSpider(CrawlSpider):
                     idxes = [sitedays[pieces.pop(0)]]
             for i in idxes:
                 days[i] = pieces
-        return get_hours_item_value(days)
+        return days
