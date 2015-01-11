@@ -59,7 +59,8 @@ class HhgreggProductSpider(Spider):
             allow='/item/'
         ).extract_links(response):
             yield Request(link.url, callback=self.parse_details,
-                          meta={self.meta_url_stack: self.stack_push(response, link.url)})
+                          meta={'dont_redirect': True,
+                                self.meta_url_stack: self.stack_push(response, link.url)})
 
         # get next page of product list
         if self.meta_page in response.meta:

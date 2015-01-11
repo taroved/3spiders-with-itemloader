@@ -78,7 +78,7 @@ class AppleLocationSpider(CrawlSpider):
         rows = [tr.xpath('td/text()') for tr in trs]
 
         if rows[0][0].extract() == self.hours_full_year:
-            return get_hours_item_value([('12:00 a.m', '12:00 a.m') for _ in range(7)])
+            return [('12:00 a.m', '12:00 a.m') for _ in range(7)]
         else:
             sitedays = ['Mon', 'Tues', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
