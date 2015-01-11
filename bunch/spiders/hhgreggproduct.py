@@ -85,11 +85,7 @@ class HhgreggProductSpider(Spider):
         @returns requests 1 1
         """
         il = ItemLoader(item=ProductItem(), response=response)
-        try:
-            details = response.xpath('//*[@id="prod_detail_main"]')[0]
-        except:
-            import pdb
-            pdb.set_trace()
+        details = response.xpath('//*[@id="prod_detail_main"]')[0]
         price_block = details.xpath('//*[@class="pricing"]')
 
         il.selector = price_block
